@@ -1,0 +1,35 @@
+---
+title: "Forecast S&P500"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Forecast documents for stock price indices
+
+The repository has the aim to practice the forecast of ts of popular indices detecting best model and practices.
+
+Every step will be in
+
+## Code
+
+It'll be fundamental to install packages
+
+```{r include=FALSE}
+install.packages("fpp3")
+library("fpp3")
+```
+
+Yahoo finance can provide historical data
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
