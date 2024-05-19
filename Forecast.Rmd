@@ -1,35 +1,193 @@
 ---
-title: "Forecast S&P500"
+title: "Forecast"
 output: github_document
 ---
 
 ```{r setup, include=FALSE}
+options(repos = "[http://cran.us.r-project.org](http://cran.us.r-project.org)")  #Replace with your preferred mirror URL
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Forecast documents for stock price indices
+## Forecast
 
-The repository has the aim to practice the forecast of ts of popular indices detecting best model and practices.
-
-Every step will be in
+Goal and methods are
 
 ## Code
 
-It'll be fundamental to install packages
+The library used for the project are listed below:
+
+-   library("dplyr")
+
+-   library("fpp2")
+
+In the fpp2 is possible to find time-series for study purposes and the forecasting tools.
 
 ```{r include=FALSE}
-install.packages("fpp3")
-library("fpp3")
+install.packages("fpp2")
+library("dplyr")
+library("fpp2")
 ```
 
-Yahoo finance can provide historical data
+## Exploratory analysis
 
-## Including Plots
-
-You can also embed plots, for example:
+Given the historical data provided by Yahoo Finance we get the last 5 years price of the popular S&P500. Studies can be done for many other securities. The repository include price quotation from May 19, 2019 - May 19, 2024 of the S&P500 and the Nasdq.
 
 ```{r pressure, echo=FALSE}
-plot(pressure)
+data<-read.csv("https://raw.githubusercontent.com/slevin95/Forecast-for-finance/main/SPX.csv")
+head(data)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+There are several reasons why adjusted prices are often preferred over raw prices for studying time series data with ARIMA models:
+
+**1. Account for Corporate Actions:**
+
+-   Raw stock prices can be affected by corporate actions like stock splits, dividends, and rights offerings. These events change the number of shares outstanding, impacting the raw price but not necessarily the underlying value of the company.
+
+-   Adjusted prices incorporate these corporate actions, reflecting the true value of the stock over time. This is crucial for ARIMA models that analyze trends and patterns in the data.
+
+**2. Improved Stationarity:**
+
+-   ARIMA models perform best with stationary data, meaning the statistical properties (mean, variance) don't change significantly over time.
+
+-   Corporate actions can introduce non-stationarity in raw prices due to sudden jumps or dips. Adjusted prices help mitigate this effect by smoothing out the impact of these events.
+
+**3. Comparability:**
+
+-   When analyzing price movements over extended periods, using adjusted prices ensures a more accurate comparison. This is because you're comparing the intrinsic value of the stock over time, not just the raw price fluctuations.
+
+**4. Consistency with Financial Analysis:**
+
+-   Financial analysts typically use adjusted prices for their calculations and valuations. By using adjusted prices in ARIMA models, you align your analysis with standard financial practices.
+
+**Here are some additional points to consider:**
+
+-   While adjusted prices are generally preferred, there might be specific research questions where raw prices are relevant (e.g., studying the immediate impact of a stock split).
+
+-   The type of adjustment applied to the price will depend on the specific corporate action.
+
+```{r}
+dates=as.Date(data$Date)
+prices=data$Adj.Close
+
+plot(dates, prices, type="l", main="Adjusted Close price S&P500 in US $")
+```
+
+Is possible to identify a upwards trends that is not a characteristic of a time-serie with seasonality. Seasonal ts refers to recurring patterns within a specific time period, typically within a year (e.g.,monthly, quarterly). but seams impossible to detect seasonality.
+
+```{r}
+arima=auto.arima(prices, seasonal = FALSE)
+summary(arima)
+
+checkresiduals(arima)
+```
+
+-   **ARIMA(0,1,2):** This indicates an ARIMA model with:
+
+    -   No autoregressive terms (AR=0), meaning the prediction doesn't rely on past values of the price series.
+
+    -   A moving average term of order 1 (MA1), suggesting the model considers the previous error term (difference between predicted and actual value) in its forecast.
+
+    -   A moving average term of order 2 (MA2), meaning it also takes into account the error term from two periods back.
+
+-   **Drift:** The presence of drift signifies a long-term linear trend in the price series.
+
+    ```{r}
+    log_return <- diff(log(prices))
+    plot(log_return, type="l", main="Log returns S&P500")
+    plot(forecast(arima, h=50))
+    ```
+
+With the transformations is possible to get a stationary ts which wasn't the case with the previous state of data.
+
+Calculating the logarithm of the index returns can improve the study of the ts under the aspects of:
+
+**Stationarity:** Financial time series data often exhibits non-stationarity, meaning the statistical properties (mean, variance) change over time. Log returns help achieve stationarity by focusing on the proportional changes in prices.
+
+**Heteroskedasticity:** meaning the variance is not constant over time. Log returns can lead to more consistent variance and improving the performance of some models.
+
+```{r}
+acf(log_return)
+acf(log_return^2)
+plot(log_return, type="l", main="Log returns S&P500")
+```
+
+As shown in the the Auto-correlation function, the data distribution has an evident lag .
+
+Log returns at the power of 2 can help highlighting volatility cluster over time as the returns are even more correlated with previous observation. As a matter of fact this findings violate the assumption of Arima models:
+
+-   **Stationarity:** means that the mean, variance, and autocorrelation of the time series data are constant over time.
+
+We try other models more suitable for our purpose.
+
+```{r}
+install.packages("rugarch")
+library(rugarch)
+
+gar <- ugarchspec(variance.model = list(model="sGARCH",garchOrder=c(1,1)),
+                                   mean.model = list(armaOrder=c(0,0)),
+                                   distribution.model = "norm")
+# fittiamo il modello
+gar <- ugarchfit(spec = gar,data = log_return)
+gar
+# sGARCH(1,1)
+
+# grafici diagnostici
+plot(gar, which=8)
+
+
+## ripeto l'analisi con un modello con innovazioni t di student
+
+# specifichiamo il modello
+gar_t <- ugarchspec(variance.model = list(model="sGARCH",garchOrder=c(1,1)),
+                                   mean.model = list(armaOrder=c(0,0)),
+                                   distribution.model = "std")
+# fittiamo il modello
+gar_t <- ugarchfit(spec = gar_t, data = log_return)
+
+# grafici diagnostici
+plot(gar_t,which=8)
+plot(gar_t@fit$z,type ="l")
+
+## calcolo del Value at Risk al 99%
+alpha = 0.99
+## con gaussiana
+VaR_gauss <- -quantile(gar, probs = 1-alpha)
+# plot(VaR_gauss)
+plot(log_return,type = "l", main = "VaR99% GARCH(1,1)Gauss")
+lines(-as.numeric(VaR_gauss),col = "red")
+# verifichiamo il numero di violazioni
+mean(log_return < -VaR_gauss)
+
+## con Student's t
+VaR_t <- -quantile(gar_t,probs = 1-alpha)
+# plot(VaR_t)
+plot(log_return,type = "l", main = "VaR99% GARCH(1,1)t")
+lines(-as.numeric(VaR_t),col = "red")
+# verifichiamo il numero di violazioni
+
+
+```
+
+# Proviamo a fare  previsioni con RF
+
+```{r}
+install.packages("randomForest")
+library(randomForest)
+library(ggplot2)
+library(tidyverse)
+
+
+#model <- randomForest(formula = paste(target, "~"), data = data, ntree = 500)  # Number of features considered at each node (adjust as needed)
+
+# Make predictions on the testing set (if applicable)
+#predictions <- predict(model, newdata = testing_data)
+
+# Evaluate the model performance (using RMSE as an example)
+#rmse <- sqrt(mean((testing_data[, target] - predictions)^2))
+#cat("Root Mean Squared Error (RMSE) on testing data:", rmse, "\n")
+
+# Forecast future values (replace with your new data for prediction)
+#new_data <- data.frame(feature1 = 10, feature2 = 5, feature3 = 2)  # Replace with your actual values
+#forecast <- predict(model, newdata = new_data)
+
+```
