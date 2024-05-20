@@ -1,4 +1,4 @@
-Forecast-for-finance
+Forecast for finance
 Goal : forecast of stock indices
 
 The GitHub project likely focuses on comparing statistical methods for forecasting stock indices.
