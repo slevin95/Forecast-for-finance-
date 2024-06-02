@@ -4,28 +4,36 @@ output: github_document
 ---
 
 ```{r setup, include=FALSE}
-options(repos = "[http://cran.us.r-project.org](http://cran.us.r-project.org)")  #Replace with your preferred mirror URL
+options(repos = "[http://cran.us.r-project.org](http://cran.us.r-project.org)") 
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ## Forecast
 
-Goal and methods are
+Goal and methods are to explore techniques of forecast in the field of financial markets and major drawbacks of such statistical methods.
 
 ## Code
 
 The library used for the project are listed below:
 
--   library("dplyr")
+-   library(dplyr)
 
--   library("fpp2")
+-   library(fpp2)
+
+-   library(fpp3)
+
+-   library(ggplot2)
+
+-   library(rugarch)
 
 In the fpp2 is possible to find time-series for study purposes and the forecasting tools.
 
 ```{r include=FALSE}
 install.packages("fpp2")
-library("dplyr")
-library("fpp2")
+library(dplyr)
+library(fpp2)
+library(fpp3)
+library(ggplot2)
 ```
 
 ## Exploratory analysis
@@ -92,7 +100,7 @@ checkresiduals(arima)
 -   **Drift:** The presence of drift signifies a long-term linear trend in the price series.
 
     ```{r}
-    log_return <- diff(log(prices))
+    log_return= diff(log(prices))
     plot(log_return, type="l", main="Log returns S&P500")
     plot(forecast(arima, h=50))
     ```
@@ -123,26 +131,24 @@ We try other models more suitable for our purpose.
 install.packages("rugarch")
 library(rugarch)
 
-gar <- ugarchspec(variance.model = list(model="sGARCH",garchOrder=c(1,1)),
+gar= ugarchspec(variance.model = list(model="sGARCH",garchOrder=c(1,1)),
                                    mean.model = list(armaOrder=c(0,0)),
                                    distribution.model = "norm")
 # fittiamo il modello
-gar <- ugarchfit(spec = gar,data = log_return)
+gar= ugarchfit(spec = gar,data = log_return)
 gar
 # sGARCH(1,1)
-
 # grafici diagnostici
 plot(gar, which=8)
 
 
 ## ripeto l'analisi con un modello con innovazioni t di student
-
 # specifichiamo il modello
-gar_t <- ugarchspec(variance.model = list(model="sGARCH",garchOrder=c(1,1)),
+gar_t= ugarchspec(variance.model = list(model="sGARCH",garchOrder=c(1,1)),
                                    mean.model = list(armaOrder=c(0,0)),
                                    distribution.model = "std")
 # fittiamo il modello
-gar_t <- ugarchfit(spec = gar_t, data = log_return)
+gar_t= ugarchfit(spec = gar_t, data = log_return)
 
 # grafici diagnostici
 plot(gar_t,which=8)
@@ -151,43 +157,100 @@ plot(gar_t@fit$z,type ="l")
 ## calcolo del Value at Risk al 99%
 alpha = 0.99
 ## con gaussiana
-VaR_gauss <- -quantile(gar, probs = 1-alpha)
+VaR_gauss= -quantile(gar, probs = 1-alpha)
 # plot(VaR_gauss)
-plot(log_return,type = "l", main = "VaR99% GARCH(1,1)Gauss")
+plot(log_return,type = "l", main = "VaR99% GARCH(1,1)Gauss")+
 lines(-as.numeric(VaR_gauss),col = "red")
+
 # verifichiamo il numero di violazioni
 mean(log_return < -VaR_gauss)
 
 ## con Student's t
-VaR_t <- -quantile(gar_t,probs = 1-alpha)
+VaR_t= -quantile(gar_t,probs = 1-alpha)
 # plot(VaR_t)
-plot(log_return,type = "l", main = "VaR99% GARCH(1,1)t")
+plot(log_return,type = "l", main = "VaR99% GARCH(1,1)t")+
 lines(-as.numeric(VaR_t),col = "red")
 # verifichiamo il numero di violazioni
 
 
 ```
 
-# Proviamo a fare  previsioni con RF
+## **Implications of VaR with GARCH Models** 
+
+GARCH (Generalized Autoregressive Conditional Heteroskedasticity) models are used to estimate the volatility of financial returns, which is crucial for accurate VaR calculations. Unlike standard volatility models, GARCH models account for the fact that volatility is often not constant over time but varies, exhibiting periods of high and low volatility.
+
+VaR provides a quantifiable measure of potential loss in a portfolio, and incorporating GARCH models into VaR calculations allows for a more dynamic and realistic assessment of risk by accounting for time-varying volatility.
 
 ```{r}
-install.packages("randomForest")
-library(randomForest)
-library(ggplot2)
-library(tidyverse)
+#Value at Risk
+a=0.05
+quantile(log_return,a)
+# This might become more accurate for risk management assessing with alpha=0.01
+
+qplot(log_return , geom = 'histogram') + geom_histogram(fill='lightblue') +
+geom_histogram(aes(log_return[log_return < quantile(log_return, a)]), fill='red') + labs(x = 'Daily Returns S&P500')
+
+```
+
+## Benchmarking Naïve
+
+```{r}
+naive=naive(prices, h = 20)  # h = 20 days
+# Plot forecasts
+autoplot(naive)
+# Plot forecast with an xlim
+autoplot(naive, include=200)
+```
+
+As for **Hewamalage et al.(2022) practitioners can check the goodness of a model benchmarking results with** Naïve **model, simple Random Walk equivalent to** ARIMA(0,1,0). 	
+
+```{r}
+library(fpp3)
+
+data$Date <- as.Date(data$Date)
+tsib= as_tsibble(data, index = Date)
+
+tsib_filled <- tsib %>%
+  fill_gaps() %>%
+  mutate(Adj.Close = ifelse(is.na(Adj.Close), mean(Adj.Close, na.rm = TRUE), Adj.Close))
 
 
-#model <- randomForest(formula = paste(target, "~"), data = data, ntree = 500)  # Number of features considered at each node (adjust as needed)
+#fit=model(NAIVE(tsib$Adj.Close))
+#autoplot(fit)
+?NAIVE
+```
 
-# Make predictions on the testing set (if applicable)
-#predictions <- predict(model, newdata = testing_data)
+## Forecast using Neural Networks
 
-# Evaluate the model performance (using RMSE as an example)
-#rmse <- sqrt(mean((testing_data[, target] - predictions)^2))
-#cat("Root Mean Squared Error (RMSE) on testing data:", rmse, "\n")
+```{r}
+fitnn=nnetar(prices, lambda = 0)
+autoplot(forecast(fitnn, h=20, col="red"))
 
-# Forecast future values (replace with your new data for prediction)
-#new_data <- data.frame(feature1 = 10, feature2 = 5, feature3 = 2)  # Replace with your actual values
-#forecast <- predict(model, newdata = new_data)
+sim= ts(matrix(0, nrow=30L, ncol=9L),
+start=end(prices)[1L]+1L)
+
+for(i in seq(9))
+  sim[,i]= simulate(fitnn, nsim=30L)
+p= autoplot(ts(prices))
+p + autolayer(sim, series = "Forecast")
+
+
+fcast= forecast(fitnn, PI=TRUE, h=20)
+autoplot(fcast)
+```
+
+Seems possible to try to model the time series of adjusted prices, with lambda=0 is performed a Box-Cox transformation. It's possible to create a cycle that iterate the forecast for several times and distribute the results plotting and graphically seeing the results.
+
+\################
+
+Figure 11.15: Forecasts with prediction intervals for the annual sunspot data. Prediction intervals are computed using simulated future sample paths.
+
+Because it is a little slow, `PI=FALSE` is the default, so prediction intervals are not computed unless requested. The `npaths` argument in `forecast()` controls how many simulations are done (default 1000). By default, the errors are drawn from a normal distribution. The `bootstrap` argument allows the errors to be “bootstrapped” (i.e., randomly drawn from the historical errors)
+
+\################
+
+Sistemare appunti
+
+```{r}
 
 ```
